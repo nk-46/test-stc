@@ -1,0 +1,5 @@
+.env
+.DS_Store
+scripts_and_files/
+.env
+slack_bot.log
