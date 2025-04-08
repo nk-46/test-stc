@@ -226,11 +226,11 @@ articles_df = pd.read_csv(CSV_FILE)
 
 # Extract text data
 article_texts = articles_df["clean_content"].dropna()
-"""
+
 THREAD_ID_FILE = "openai_thread.json"
 
 def get_saved_thread_id():
-    """Retrieve the saved thread ID from a file if available."""
+    #Retrieve the saved thread ID from a file if available
     if os.path.exists(THREAD_ID_FILE):
         try:
             with open(THREAD_ID_FILE, "r") as file:
@@ -241,7 +241,7 @@ def get_saved_thread_id():
     return None
 
 def save_thread_id(thread_id):
-    """Save the thread ID to a file for reuse."""
+    #Save the thread ID to a file for reuse.
     try:
         with open(THREAD_ID_FILE, "w") as file:
             json.dump({"thread_id": thread_id}, file)
@@ -250,7 +250,7 @@ def save_thread_id(thread_id):
         logger.error(f"Error saving thread ID: {e}")
 
 
-"""# Load the saved RFC model (74%) and label encoder
+# Load the saved RFC model (74%) and label encoder
 rfc_model = joblib.load("random_forest_model.pkl")
 label_encoder = joblib.load("random_forest_label_encoder.pkl")"""
 
@@ -275,59 +275,6 @@ def classify_message(cleaned_text):
     ai_response = predicted_label[0]
     logger.info(f"Predicted message category: {ai_response}")
     return ai_response
-
-"""
-# Initialize TF-IDF vectorizer for local text search
-vectorizer = TfidfVectorizer(stop_words="english")
-tfidf_matrix = vectorizer.fit_transform(article_texts)
-logger.info(f"tfidf matrix:\n {tfidf_matrix}")
-
-#Load vectorized data
-vec_df = pd.read_csv("vectorized_articles.csv")
-logger.info("Vectorized articles loaded...")
-
-#Load vectorizer and the matrix
-with open("tfidf_vectorizer.pkl", "rb") as vec_file:
-    vectorizer = pickle.load(vec_file)
-
-with open("tfidf_matrix.pkl", "rb") as mat_file:
-    tfidf_matrix = pickle.load(mat_file)
-
-logger.info("Vectotized data loaded successfully!!")
-print("Vectotized data loaded successfully!!")
-
-#Find related articles from CSV
-def find_related_article(cleaned_text):
-    #Find the most relevant Confluence article using TF-IDF.
-    user_vector = vectorizer.transform([cleaned_text])
-
-    #compute similarities and using sentence transform embeddings to compare slack with confluence
-    similarities = cosine_similarity(user_vector, tfidf_matrix).flatten()
-    best_match_index = np.argmax(similarities)
-    best_match_score = similarities[best_match_index]
-
-    # ✅ Print and log the best match and similarity score
-    print(f"✅ Best Match Index: {best_match_index}")
-    logger.info(f"✅ Best Match Index: {best_match_index}")
-    print(f"✅ Similarity Score: {best_match_score:.4f}")  # Format to 4 decimal places
-    logger.info(f"✅ Similarity Score: {best_match_score:.4f}")
-
-    # ✅ Ensure `best_match_index` is within bounds
-    num_rows = articles_df.shape[0]  # Total number of rows in DataFrame
-    if best_match_index >= num_rows:
-        print(f"⚠️ Error: Best match index {best_match_index} is out of bounds (Total rows: {num_rows})")
-        return None, None
-
-    # ✅ Ensure threshold for relevant match (e.g., 0.6)
-    if similarities[best_match_index] > 0.3:
-        best_article = articles_df.iloc[best_match_index]
-        print(f"✅ Best Match Found: {best_article['title']} (ID: {best_article['id']})")
-        return best_article["title"], best_article["id"]
-    else:
-        print("⚠️ No relevant article found.")
-        return None, None
-"""    
-
 
 def find_related_article(cleaned_text, similarity_threshold=0.6, top_k=5):
     """Find the most relevant Confluence article using Pinecone similarity search."""
@@ -523,13 +470,13 @@ def handle_slack_event(client: SocketModeClient, req: SocketModeRequest):
                             
                             # Format and update Confluence
                             formatted_content = f"""
-                            <p>Latest Update from Slack:</p>
+                            <ac:layout><ac:layout-section ac:type="fixed-width" ac:breakout-mode="default"><ac:layout-cell><ac:structured-macro ac:name="children" ac:schema-version="2" data-layout="default"/>
+                            <p><h3>Latest Update from Slack channel:</h3></p>
+                            <p>Posted on: <em>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
+                            <p><strong>Category by SVM:</strong> {final_response}</p>
+                            <p>AI chosen article using cosine similarity search:<strong> {article_title}. Id: {article_id}</strong></p>
                             <blockquote>
-                                <p>Category by SVM: {final_response}</p>
-                                <p>Using Existing thread to use OPENAI assistant. ver: {new_v} </p>
-                                <p>AI chosen article using cosine similarity search: {article_title}. Id: {article_id}</p>
                                 <p>{extracted_content}</p>
-                                <p><em>Updated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
                             </blockquote>
                             """
                             

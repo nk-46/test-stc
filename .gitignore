@@ -51,3 +51,4 @@ accuracy.py
 
 #ignore extracted slack event
 extracted_slack_event.json
+rough.html
