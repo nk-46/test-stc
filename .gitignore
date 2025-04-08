@@ -3,3 +3,51 @@
 scripts_and_files/
 .env
 slack_bot.log
+#Ignore environment variables
+.env
+
+#Ignore database storage
+.DS_Store
+
+#ignore independent scripts
+scripts_and_files/
+
+#Ignore log files
+slack_bot.log
+
+#Ignore all data files
+all_confluence_articles_cleaned.csv
+rfc_predicted_slack_messages.csv
+slack_test_new.csv
+slack_train_v2_all_models.csv
+updated_slack_train.csv
+vectorized_articles.csv
+
+#Ignore backup files
+backup_main.py
+backup_main2.py
+updated_main.py
+
+#Ignore all AI models and label encoders
+k-nearest_neighbors_model.pkl
+k-nearest_neighbors_label_encoder.pkl
+label_encoder_rfc.pkl
+label_encoder_rfc_v1.pkl
+random_forest_label_encoder.pkl
+random_forest_model.pkl
+sms_classifier_model_rfc_v1.pkl
+sms_classifier_model_rfc.pkl
+support_vector_machine_model.pkl
+support_vector_machine_label_encoder.pkl
+tfidf_matrix.pkl
+tfidf_vectorizer.pkl
+
+#ignore openAI threadopenai_thread.json
+openai_thread.json
+
+#Ignore virtual environmenttest_confluence/
+test_confluence/
+accuracy.py
+
+#ignore extracted slack event
+extracted_slack_event.json

@@ -9,7 +9,7 @@ import base64
 import time
 import joblib
 import pickle
-import chromadb
+from pinecone import Pinecone
 import logging
 import requests
 import pandas as pd
@@ -74,10 +74,19 @@ API_TOKEN = os.getenv("CONFLUENCE_API_TOKEN")  # Generate from Atlassian API tok
 PAGE_ID = os.getenv("CONFLUENCE_PAGE_ID")  # Replace with the actual Confluence page ID
 SPACE_ID = os.getenv("CONFLUENCE_SPACE_ID") 
 
+#Pinecone details
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX = os.getenv("PINECONE_INDEX")
+
+
 
 # Initialize clients
 slack_client = WebClient(token=SLACK_BOT_TOKEN)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+pc_client = Pinecone(api_key=PINECONE_API_KEY)
+index = pc_client.Index(PINECONE_INDEX)
+
+
 
 # Create Basic Auth string with email+token format
 auth = HTTPBasicAuth(EMAIL , API_TOKEN)
@@ -205,7 +214,7 @@ def on_disconnect(client: SocketModeClient):
 def on_error(client: SocketModeClient, error):
     """Called when the client encounters an error"""
     logger.error(f"Error in Socket Mode: {error}")
-
+"""
 # Load CSV Database (Local File)
 CSV_FILE = "vectorized_articles.csv"
 if not os.path.exists(CSV_FILE):
@@ -217,8 +226,7 @@ articles_df = pd.read_csv(CSV_FILE)
 
 # Extract text data
 article_texts = articles_df["clean_content"].dropna()
-
-
+"""
 THREAD_ID_FILE = "openai_thread.json"
 
 def get_saved_thread_id():
@@ -242,9 +250,13 @@ def save_thread_id(thread_id):
         logger.error(f"Error saving thread ID: {e}")
 
 
-# Load the saved RFC model and label encoder
-rfc_model = joblib.load("sms_classifier_model_rfc_v1.pkl")
-label_encoder = joblib.load("label_encoder_rfc_v1.pkl")
+"""# Load the saved RFC model (74%) and label encoder
+rfc_model = joblib.load("random_forest_model.pkl")
+label_encoder = joblib.load("random_forest_label_encoder.pkl")"""
+
+#Load the Support vector machine model and label encoder
+svm_model = joblib.load("support_vector_machine_model.pkl")
+label_encoder = joblib.load("support_vector_machine_label_encoder.pkl")
 
 # Load the same sentence embedding model
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -258,17 +270,17 @@ def classify_message(cleaned_text):
     message_embedding = embedding_model.encode([cleaned_text]).reshape(1,-1) 
 
     #Predict category using RFC
-    prediction = rfc_model.predict(message_embedding)
+    prediction = svm_model.predict(message_embedding)
     predicted_label = label_encoder.inverse_transform(prediction)
     ai_response = predicted_label[0]
     logger.info(f"Predicted message category: {ai_response}")
     return ai_response
 
-
+"""
 # Initialize TF-IDF vectorizer for local text search
-#vectorizer = TfidfVectorizer(stop_words="english")
-#tfidf_matrix = vectorizer.fit_transform(article_texts)
-#logger.info(f"tfidf matrix:\n {tfidf_matrix}")
+vectorizer = TfidfVectorizer(stop_words="english")
+tfidf_matrix = vectorizer.fit_transform(article_texts)
+logger.info(f"tfidf matrix:\n {tfidf_matrix}")
 
 #Load vectorized data
 vec_df = pd.read_csv("vectorized_articles.csv")
@@ -284,7 +296,6 @@ with open("tfidf_matrix.pkl", "rb") as mat_file:
 logger.info("Vectotized data loaded successfully!!")
 print("Vectotized data loaded successfully!!")
 
-"""
 #Find related articles from CSV
 def find_related_article(cleaned_text):
     #Find the most relevant Confluence article using TF-IDF.
@@ -317,83 +328,49 @@ def find_related_article(cleaned_text):
         return None, None
 """    
 
-#Connect to Chroma server  
-chroma_client = chromadb.HttpClient(host="localhost", port=8000)
-logger.info("Connected to Chroma Database sucessfully!")
 
-logger.info("Fetching collections....")
+def find_related_article(cleaned_text, similarity_threshold=0.6, top_k=5):
+    """Find the most relevant Confluence article using Pinecone similarity search."""
 
-#list Collections
-collections = chroma_client.list_collections()
-logger.info(f"Collections list found!!: {collections}")
-
-#connect to existing collection
-collection = chroma_client.get_collection(
-    name="support_articles"
-)
-logger.info("Connected and loaded data from the collection successfully!!")
-
-
-#Find related articles using ChromaDB
-def find_related_article(cleaned_text):
-    """Find the most relevant Confluence article using precomputed Slack message embeddings and ChromaDB."""
-    
-    # ✅ Generate Slack message embeddings using the same model as stored embeddings
     try:
-        slack_vector = embedding_model.encode([cleaned_text]).reshape(1, -1).astype(np.float32)
+        # ✅ Generate Slack vector
+        slack_vector = embedding_model.encode([cleaned_text]).astype(np.float32)
     except Exception as e:
         logger.error(f"⚠️ Error generating Slack vector: {e}")
         return None, None
 
-    # ✅ Query ChromaDB using query_embeddings instead of query_texts
     try:
-        results = collection.query(
-            query_embeddings=slack_vector.tolist(),  # Pass the precomputed embeddings
-            n_results=5,  # Number of results to retrieve
-            include=["embeddings", "documents", "metadatas", "distances"]
+        # ✅ Query Pinecone using precomputed embedding
+        pinecone_results = index.query(
+            vector=slack_vector[0].tolist(),
+            top_k=top_k,
+            include_metadata=True
         )
     except Exception as e:
-        logger.error(f"⚠️ Error querying ChromaDB: {e}")
+        logger.error(f"⚠️ Error querying Pinecone: {e}")
         return None, None
 
-    # ✅ Check if embeddings were returned
-    if len(results["embeddings"]) == 0 or results["embeddings"][0] is None:
-        logger.warning("⚠️ No relevant embeddings found in ChromaDB.")
+    # ✅ Check if any matches were returned
+    if not pinecone_results.matches:
+        logger.warning("⚠️ No matches found in Pinecone.")
         return None, None
 
-    stored_embeddings = np.array(results["embeddings"][0], dtype=np.float32)
+    # ✅ Convert to similarity using cosine distance
+    matches = pinecone_results.matches
+    scores = np.array([match.score for match in matches])
+    best_match_index = int(np.argmax(scores))
+    best_match_score = scores[best_match_index]
 
-    # ✅ Check dimension consistency
-    if slack_vector.shape[1] != stored_embeddings.shape[1]:
-        logger.error(f"⚠️ Dimension mismatch! Slack vector shape: {slack_vector.shape}, Stored embeddings shape: {stored_embeddings.shape}")
-        return None, None
+    logger.info(f"✅ Best Match Score: {best_match_score:.4f}")
 
-    # ✅ Compute cosine similarity between Slack vector and stored embeddings
-    similarities = cosine_similarity(slack_vector, stored_embeddings).flatten()
+    # ✅ Validate and return metadata
+    if best_match_score > similarity_threshold:
+        best_match = matches[best_match_index]
+        metadata = best_match.metadata
 
-    # ✅ Check for valid similarity results
-    if similarities.size == 0 or np.isnan(similarities).all():
-        logger.error("⚠️ No valid similarity scores found.")
-        return None, None
+        article_title = metadata.get("title", "Unknown Title")
+        article_id = metadata.get("article_id", "Unknown ID")
 
-    # ✅ Find best match
-    best_match_index = np.argmax(similarities)
-    best_match_score = similarities[best_match_index]
-
-    # ✅ Print and log best match and similarity score
-    logger.info(f"✅ Best Match Index: {best_match_index}")
-    logger.info(f"✅ Similarity Score: {best_match_score:.4f}")
-
-    # ✅ Check if best match index is within bounds
-    if best_match_index >= len(results["documents"][0]):
-        logger.error(f"⚠️ Error: Best match index {best_match_index} is out of bounds!")
-        return None, None
-
-    # ✅ Return article if similarity score is above threshold
-    if best_match_score > 0.6:
-        best_article_metadata = results["metadatas"][0][best_match_index]
-        article_title = best_article_metadata["title"]
-        article_id = best_article_metadata["article_id"]
         logger.info(f"✅ Best Match Found: {article_title} (ID: {article_id})")
         return article_title, article_id
     else:
@@ -548,9 +525,9 @@ def handle_slack_event(client: SocketModeClient, req: SocketModeRequest):
                             formatted_content = f"""
                             <p>Latest Update from Slack:</p>
                             <blockquote>
-                                <p>Category by RFC: {final_response}</p>
+                                <p>Category by SVM: {final_response}</p>
                                 <p>Using Existing thread to use OPENAI assistant. ver: {new_v} </p>
-                                <p>AI chosen article using TF-IDF: {article_title}. Id: {article_id}</p>
+                                <p>AI chosen article using cosine similarity search: {article_title}. Id: {article_id}</p>
                                 <p>{extracted_content}</p>
                                 <p><em>Updated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
                             </blockquote>
