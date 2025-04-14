@@ -42,7 +42,7 @@ VERSION_FILE = "sms_version.json"
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # OpenAI Assistant ID
-ASSISTANT_ID = "asst_3wdSmJAfchbWa6sjoQs2KpCV"
+ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 #OPENAI THREAD ID
 #thread_id = os.getenv("OPENAI_THREAD_ID")
 
